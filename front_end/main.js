@@ -5,48 +5,28 @@ const random_id = (len) => {
 };
 const g_origin = new URL(window.location.href).origin;
 const g_id = random_id(12);
+let g_bomb = 0;
 // Payload is a marshaled (but not JSON-stringified) object
 // A JSON-parsed response object will be passed to the callback
-const httpPost = (page_name, payload, callback) => {
-    let request = new XMLHttpRequest();
-    request.onreadystatechange = () => {
-        if (request.readyState === 4) {
-            if (request.status === 200) {
-                let response_obj;
-                try {
-                    response_obj = JSON.parse(request.responseText);
-                }
-                catch (err) { }
-                if (response_obj) {
-                    callback(response_obj);
-                }
-                else {
-                    callback({
-                        status: 'error',
-                        message: 'response is not valid JSON',
-                        response: request.responseText,
-                    });
-                }
-            }
-            else {
-                if (request.status === 0 && request.statusText.length === 0) {
-                    callback({
-                        status: 'error',
-                        message: 'connection failed',
-                    });
-                }
-                else {
-                    callback({
-                        status: 'error',
-                        message: `server returned status ${request.status}: ${request.statusText}`,
-                    });
-                }
-            }
+const fetchPost = async (page_name, payload) => {
+    try {
+        const response = await fetch(`${g_origin}/${page_name}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+        });
+        if (response.ok) {
+            return await response.json();
         }
-    };
-    request.open('post', `${g_origin}/${page_name}`, true);
-    request.setRequestHeader('Content-Type', 'application/json');
-    request.send(JSON.stringify(payload));
+        else {
+            throw new Error(`${response.status} ${response.statusText}`);
+        }
+    }
+    catch (error) {
+        console.log(error);
+    }
 };
 class Sprite {
     x;
@@ -153,6 +133,7 @@ class Controller {
     key_up;
     key_down;
     last_updates_request_time = 0;
+    key_space;
     constructor(model, view) {
         this.model = model;
         this.view = view;
@@ -160,11 +141,12 @@ class Controller {
         this.key_left = false;
         this.key_up = false;
         this.key_down = false;
+        this.key_space = false;
         const self = this;
         this.last_updates_request_time = 0;
         view.canvas.addEventListener("click", (event) => { self.onClick(event); });
         document.addEventListener('keydown', (event) => { self.keyDown(event); }, false);
-        document.addEventListener('keyup', (event) => { self.keyUp(event); }, false);
+        document.addEventListener('keyup', (event) => { self.keyUp(event); }, true);
     }
     onClick(event) {
         const x = event.pageX - this.view.canvas.offsetLeft;
@@ -172,12 +154,14 @@ class Controller {
         this.model.onclick(x, y);
         this.model.turtle.set_destination(x, y);
         //this.model.turtle.go_toward_destination();
-        httpPost('ajax.html', {
+        fetchPost('ajax.html', {
             id: g_id,
             action: 'clicked',
             x: x,
             y: y,
-        }, this.onAcknowledgeClick);
+        })
+            .then(this.onAcknowledgeClick)
+            .catch(error => console.error(error));
     }
     keyDown(event) {
         if (event.key === 'ArrowRight')
@@ -188,6 +172,8 @@ class Controller {
             this.key_up = true;
         else if (event.key === 'ArrowDown')
             this.key_down = true;
+        else if (event.key === ' ')
+            this.key_space = false;
     }
     keyUp(event) {
         if (event.key === 'ArrowRight')
@@ -198,11 +184,16 @@ class Controller {
             this.key_up = false;
         else if (event.key === 'ArrowDown')
             this.key_down = false;
+        else if (event.key === ' ')
+            this.key_space = true;
     }
     update() {
         let dx = 0;
         let dy = 0;
         const speed = this.model.turtle.speed;
+        const sleep = async (ms) => {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        };
         if (this.key_right)
             dx += speed;
         if (this.key_left)
@@ -217,10 +208,47 @@ class Controller {
         if (time - this.last_updates_request_time >= 1000) {
             this.last_updates_request_time = time;
             // Send a request to the server for updates
-            httpPost('ajax.html', {
+            fetchPost('ajax.html', {
                 id: g_id,
                 action: 'updates',
-            }, this.updateFront);
+            })
+                .then(this.updateFront)
+                .catch(error => console.error(error));
+        }
+        const createBomb = async (ms) => {
+            g_bomb++;
+            let bombbasic = "bomb" + g_bomb;
+            const bombSprite = new Sprite(this.model.sprites[0].x, this.model.sprites[0].y, bombbasic, "bomb.png", Sprite.prototype.sit_still, Sprite.prototype.ignore_click);
+            this.model.sprites.push(bombSprite);
+            await sleep(ms);
+            return bombbasic;
+        };
+        const explosion = (id) => {
+            for (let i = 0; i < this.model.sprites.length; i++) {
+                if (this.model.sprites[i].id === id) {
+                    this.model.sprites[i].y += 100;
+                    this.model.sprites[i].image.src = "explosion.png";
+                    this.model.sprites[i].update = Sprite.prototype.sit_still;
+                    this.model.sprites[i].onclick = Sprite.prototype.ignore_click;
+                }
+            }
+        };
+        const removeBomb = (id) => {
+            for (let i = this.model.sprites.length - 1; i >= 0; i--) {
+                if (this.model.sprites[i].id === id || this.model.sprites[i].id === "explosion") {
+                    this.model.sprites.splice(i, 1);
+                }
+            }
+        };
+        if (this.key_space) {
+            createBomb(3000).then(async (id) => {
+                explosion(id);
+                await sleep(300);
+                return id;
+            }).then((id) => {
+                removeBomb(id);
+            });
+            this.key_space = false;
         }
     }
     onAcknowledgeClick(ob) {
