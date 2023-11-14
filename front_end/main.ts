@@ -283,6 +283,8 @@ class Controller {
                         this.model.sprites[i].image.src = "explosion.png";
                         this.model.sprites[i].update = Sprite.prototype.sit_still;
                         this.model.sprites[i].onclick = Sprite.prototype.ignore_click;
+                        //window.open("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+                        new Audio('scream.mp3').play()
                     }
                 }
             
