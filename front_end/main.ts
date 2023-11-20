@@ -260,60 +260,34 @@ class Controller {
 
 
 
-            const createBomb = async (ms:number) =>{
-                g_bomb ++; 
-                let bombbasic = "bomb" + g_bomb; 
-        
-                const bombSprite = new Sprite(this.model.sprites[0].x, this.model.sprites[0].y, bombbasic, "bomb.png", Sprite.prototype.sit_still, Sprite.prototype.ignore_click);
-                this.model.sprites.push(bombSprite);
-        
-                await sleep(ms); 
-
-                return bombbasic; 
-        
-               
-            }
-
-            const explosion = (id:string) => {
-
-                for (let i = 0; i < this.model.sprites.length; i++) {
-
-                    if (this.model.sprites[i].id === id) {
-                        this.model.sprites[i].y += 100;
-                        this.model.sprites[i].image.src = "explosion.png";
-                        this.model.sprites[i].update = Sprite.prototype.sit_still;
-                        this.model.sprites[i].onclick = Sprite.prototype.ignore_click;
-                        //window.open("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
-                        new Audio('scream.mp3').play()
-                    }
-                }
+            const createBomb = async (ms: number, remove: number) => {
+                return new Promise<void>(async (resolve) => {
+                    let b = new Sprite(game.model.turtle.x,game.model.turtle.y,g_bomb.toString(),"bomb.png",Sprite.prototype.sit_still,Sprite.prototype.ignore_click);
+                    game.model.sprites.push(b);
             
-            }
-
-            const removeBomb = (id:string) => {
-                    
-                    for (let i = this.model.sprites.length - 1; i >= 0; i--) {
-    
-                        if (this.model.sprites[i].id === id || this.model.sprites[i].id === "explosion") {
-                            this.model.sprites.splice(i, 1);
-                        }
+                    await sleep(ms);
+                    b.y += 100;
+                    b.image.src = "explosion.png";
+            
+                    await sleep(remove);
+                    let bi = game.model.sprites.indexOf(b);
+                    if (bi !== -1) {
+                        game.model.sprites.splice(bi, 1);
                     }
-
-            }
+            
+                    resolve();
+                });
+            };
+            
+           
 
             if (this.key_space) {
-                createBomb(3000).then(async (id) => {
-                    explosion(id);
-                    await sleep(300);
-                    return id; 
-                }).then((id) => {
-
-                    removeBomb(id);
-                    
-                });
-                
+                createBomb(3000, 300);
                 this.key_space = false;
+                
             }
+
+
 
             
     }
